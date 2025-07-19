@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>バケット型家計簿</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    :root {
+      --primary-color: #4f46e5;
+      --secondary-color: #10b981;
+      --danger-color: #ef4444;
+    }
+    body {
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+    }
+    .dark .bg-white { background-color: #1f2937; }
+    .dark .bg-gray-50 { background-color: #374151; }
+    .dark .border-gray-200 { border-color: #374151; }
+    .dark .hover\:bg-gray-100:hover { background-color: #374151; }
+    .dark .bg-green-100 { background-color: rgba(16, 185, 129, 0.1); }
+    .dark .border-green-400 { border-color: rgba(52, 211, 153, 0.4); }
+    .dark .text-gray-900 { color: #f9fafb; }
+    .dark .text-gray-800 { color: #f3f4f6; }
+    .dark .text-gray-700 { color: #d1d5db; }
+    .dark .text-gray-500 { color: #9ca3af; }
+    .dark .text-green-800 { color: #6ee7b7; }
+    .dark .text-blue-600 { color: #60a5fa; }
+
+    #loader {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(255, 255, 255, 0.7); display: flex;
+      justify-content: center; align-items: center; z-index: 9999;
+    }
+    .dark #loader { background: rgba(0, 0, 0, 0.7); }
+    .spinner {
+      border: 8px solid #f3f3f3; border-top: 8px solid var(--primary-color);
+      border-radius: 50%; width: 60px; height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    #loader.hidden { display: none; }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100" onload="startApplication()">
+  <div id="loader"><div class="spinner"></div></div>
+
+  <div class="min-h-screen flex flex-col">
+    <header class="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-40">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+          <div class="flex items-center">
+            <i class="fas fa-inbox text-2xl text-indigo-600 dark:text-indigo-400"></i>
+            <h1 class="text-xl font-bold ml-3">バケット型家計簿</h1>
+          </div>
+          <div class="flex items-center gap-4">
+            <button id="register-salary-btn" class="px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm"><i class="fas fa-money-bill-wave mr-2"></i>給料を登録</button>
+            <button id="theme-toggle" class="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700">
+              <i class="fas fa-sun" id="theme-icon-light"></i>
+              <i class="fas fa-moon hidden" id="theme-icon-dark"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-grow">
+      <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div id="reminder-banner" class="hidden mb-4 p-4 bg-yellow-100 dark:bg-yellow-900 border border-yellow-400 rounded-lg text-yellow-800 dark:text-yellow-200"></div>
+        <div class="border-b border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto no-scrollbar">
+          <nav class="-mb-px flex space-x-8 px-4 sm:px-0" aria-label="Tabs">
+            <a href="#" id="tab-dashboard" class="tab border-indigo-500 text-indigo-600 dark:text-indigo-400 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">ダッシュボード</a>
+            <a href="#" id="tab-allocation" class="tab border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">予算の振分</a>
+            <a href="#" id="tab-transaction" class="tab border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">取引記録</a>
+            <a href="#" id="tab-history" class="tab border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">取引履歴</a>
+            <a href="#" id="tab-accounts" class="tab border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">口座設定</a>
+            <a href="#" id="tab-future" class="tab border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">将来の出費</a>
+            <a href="#" id="tab-simulation" class="tab border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">シミュレーション</a>
+          </nav>
+        </div>
+
+        <div id="content-dashboard" class="content-area"></div>
+        <div id="content-allocation" class="content-area hidden"></div>
+        <div id="content-transaction" class="content-area hidden"></div>
+        <div id="content-history" class="content-area hidden"></div>
+        <div id="content-accounts" class="content-area hidden"></div>
+        <div id="content-future" class="content-area hidden"></div>
+        <div id="content-simulation" class="content-area hidden"></div>
+      </div>
+    </main>
+
+    <footer class="bg-white dark:bg-gray-800 mt-8">
+      <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
+        &copy; 2025 バケット型家計簿アプリ.
+      </div>
+    </footer>
+    
+    <div id="modal-container"></div>
+  </div>
+
+  <script>
+    // =================================================================
+    // グローバル変数
+    // =================================================================
+    let simulationChart = null;
+    let allData = {};
+
+    // =================================================================
+    // 初期化処理
+    // =================================================================
+    function startApplication() {
+      showLoader();
+      google.script.run
+        .withSuccessHandler(initializeApp)
+        .withFailureHandler(onFailure)
+        .getInitialData();
+      setupEventListeners();
+    }
+
+    function initializeApp(data) {
+      allData = data;
+      try {
+        renderDashboard(data.dashboardData);
+        renderAllocation(data.dashboardData, data.templates);
+        renderTransactionForm(data.dashboardData.accounts);
+        renderHistory(data.transactions);
+        renderAccountSettings(data.dashboardData.accounts);
+        renderFutureExpenseForm(data.futureExpenses, data.dashboardData.accounts);
+        renderSimulation(data.templates, data.dashboardData.accounts);
+        checkReminders();
+      } catch (error) {
+        console.error("A critical error occurred during initialization:", error);
+        showModal('初期化エラー', 'アプリケーションの表示中に問題が発生しました。');
+      } finally {
+        hideLoader();
+      }
+    }
+
+    // =================================================================
+    // UIレンダリング関数
+    // =================================================================
+    function renderDashboard(data) {
+      const container = document.getElementById('content-dashboard');
+      const savingsAccounts = data.accounts.filter(acc => acc.type === '貯金・積立');
+      const totalBalance = savingsAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+      
+      const groupedAccounts = savingsAccounts.reduce((groups, acc) => {
+        const groupName = acc.group || 'その他';
+        if (!groups[groupName]) {
+          groups[groupName] = { accounts: [], total: 0 };
+        }
+        groups[groupName].accounts.push(acc);
+        groups[groupName].total += acc.balance;
+        return groups;
+      }, {});
+
+      container.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium text-gray-500 dark:text-gray-400">総貯金額 (貯金・積立口座合計)</h3>
+            <p class="mt-1 text-3xl font-semibold text-blue-600 dark:text-blue-400">${totalBalance.toLocaleString()}円</p>
+          </div>
+          <div class="bg-green-100 dark:bg-green-900 border border-green-400 p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium text-green-800 dark:text-green-200">振分可能なお金 (生活費)</h3>
+            <p class="mt-1 text-3xl font-semibold text-green-600 dark:text-green-400">${data.toBeBudgeted.toLocaleString()}円</p>
+          </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h3 class="text-xl font-semibold mb-4">貯金・積立口座の残高一覧</h3>
+          <div class="space-y-6">
+            ${Object.entries(groupedAccounts).map(([groupName, groupData]) => `
+              <div>
+                <h4 class="text-lg font-semibold mb-2">${groupName} <span class="text-base font-normal text-gray-500">- 合計: ${groupData.total.toLocaleString()}円</span></h4>
+                <div class="space-y-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700">
+                  ${groupData.accounts.map(acc => `
+                    <div>
+                      <div class="flex justify-between mb-1">
+                        <span class="text-base font-medium">${acc.category}</span>
+                        <span class="text-base font-medium">${acc.balance.toLocaleString()}円</span>
+                      </div>
+                      ${acc.goal > 0 ? `
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                          <div class="bg-green-600 h-2.5 rounded-full" style="width: ${Math.min((acc.balance / acc.goal) * 100, 100)}%"></div>
+                        </div>
+                        <div class="text-xs text-right text-gray-500">目標: ${acc.goal.toLocaleString()}円 (${Math.round((acc.balance / acc.goal) * 100)}%)</div>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAllocation(dashboardData, templates) {
+      const container = document.getElementById('content-allocation');
+      container.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">予算を振り分ける</h2>
+            <div class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-lg font-bold px-4 py-2 rounded-lg">
+              振分可能: ${dashboardData.toBeBudgeted.toLocaleString()}円
+            </div>
+          </div>
+          <div class="mb-6 flex gap-4">
+            <select id="template-select" class="flex-grow block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+              <option value="">テンプレートを選択...</option>
+              ${Object.keys(templates).map(name => `<option value="${name}">${name}</option>`).join('')}
+            </select>
+            <button id="load-template-btn" class="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-700">読み込み</button>
+          </div>
+          <form id="allocation-form" class="space-y-4">
+            <div class="border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+              <h3 class="text-lg font-bold mb-2">月収（シミュレーション用）</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                      <label for="income-wife" class="block text-sm font-medium">妻の給料</label>
+                      <input type="number" id="income-wife" name="income-妻の給料" placeholder="0" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                  </div>
+                  <div>
+                      <label for="income-husband" class="block text-sm font-medium">夫の給料</label>
+                      <input type="number" id="income-husband" name="income-夫の給料" placeholder="0" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                  </div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-bold">月次振分</h3>
+                <div class="text-sm text-gray-500">消費支出</div>
+              </div>
+              <div id="allocation-inputs" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                ${dashboardData.accounts.map(acc => `
+                  <div class="flex items-center gap-2">
+                    <div class="flex-grow">
+                      <label for="alloc-${acc.category}" class="block text-sm font-medium">${acc.category}</label>
+                      <input type="number" id="alloc-${acc.category}" name="alloc-${acc.category}" placeholder="0" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                    </div>
+                    <input type="checkbox" id="isExpense-${acc.category}" name="isExpense-${acc.category}" class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 mt-6">
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            <div id="savings-summary" class="mt-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <h4 class="font-bold text-lg">残りの貯金額（2人の貯金）: <span id="couples-savings" class="text-blue-600 dark:text-blue-400">0円</span></h4>
+            </div>
+            <div class="pt-4 flex flex-col sm:flex-row gap-4">
+              <button type="submit" class="flex-1 justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700">この内容で振り分ける</button>
+              <button type="button" id="save-template-btn" class="flex-1 justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-lg font-medium bg-white dark:bg-gray-600 hover:bg-gray-50">テンプレートとして保存</button>
+            </div>
+          </form>
+        </div>
+      `;
+      setupAllocationListeners(templates);
+    }
+    
+    function renderTransactionForm(accounts) {
+      const container = document.getElementById('content-transaction');
+      container.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+          <h2 id="transaction-form-title" class="text-2xl font-bold mb-6">取引を記録する</h2>
+          <form id="transaction-form" class="space-y-6">
+            <input type="hidden" id="transaction-id" name="id">
+            <div>
+              <label class="block text-sm font-medium">種類</label>
+              <div class="mt-1 flex rounded-md">
+                <button type="button" id="type-expense" class="px-4 py-2 bg-indigo-600 text-white rounded-l-md">支出</button>
+                <button type="button" id="type-income" class="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-r-md">収入</button>
+                <button type="button" id="type-allocation" class="px-4 py-2 bg-gray-200 dark:bg-gray-600">振分</button>
+              </div>
+              <input type="hidden" id="transaction-type" name="type" value="支出">
+            </div>
+            <div>
+              <label for="date" class="block text-sm font-medium">日付</label>
+              <input type="date" id="date" name="date" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm" required>
+            </div>
+            <div>
+              <label for="amount" class="block text-sm font-medium">金額</label>
+              <input type="number" id="amount" name="amount" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm" placeholder="例: 3000" required>
+            </div>
+            <div id="category-wrapper">
+              <label for="category" class="block text-sm font-medium">カテゴリ (どの口座から？)</label>
+              <select id="category" name="category" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm" required>
+                ${accounts.map(acc => `<option value="${acc.category}">${acc.category}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label for="memo" class="block text-sm font-medium">メモ</label>
+              <input type="text" id="memo" name="memo" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm" placeholder="例: スーパーでの買い物">
+            </div>
+            <div class="pt-2 flex gap-4">
+              <button type="submit" id="transaction-submit-btn" class="flex-grow justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">記録する</button>
+              <button type="button" id="transaction-cancel-btn" class="hidden flex-grow justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium bg-white hover:bg-gray-50">キャンセル</button>
+            </div>
+          </form>
+        </div>
+      `;
+      document.getElementById('date').valueAsDate = new Date();
+      setupTransactionFormListeners(accounts);
+    }
+
+    function renderHistory(transactions) {
+      const container = document.getElementById('content-history');
+      const sortedTransactions = transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+      container.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+          <h2 class="text-2xl font-bold mb-6">取引履歴</h2>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead class="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日付</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">種類</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">カテゴリ</th>
+                  <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">金額</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">メモ</th>
+                  <th scope="col" class="relative px-6 py-3"><span class="sr-only">編集</span></th>
+                </tr>
+              </thead>
+              <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                ${sortedTransactions.map(t => `
+                  <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">${new Date(t.date).toLocaleDateString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${t.type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${t.category}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right ${t.type === '収入' ? 'text-green-600 dark:text-green-400' : (t.type === '支出' ? 'text-red-600 dark:text-red-400' : 'text-gray-500')}">${t.amount.toLocaleString()}円</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${t.memo}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900" onclick="editTransaction('${t.id}')">編集</button>
+                      <button class="text-red-600 dark:text-red-400 hover:text-red-900 ml-4" onclick="deleteTransaction('${t.id}')">削除</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+    
+    function renderAccountSettings(accounts) {
+      const container = document.getElementById('content-accounts');
+      container.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">口座設定</h2>
+            <button id="add-account-btn" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-sm">
+              <i class="fas fa-plus mr-2"></i>新しい口座を追加
+            </button>
+          </div>
+          <div id="account-list" class="space-y-4">
+            ${accounts.map(acc => `
+              <div class="p-4 border dark:border-gray-700 rounded-md">
+                <form class="account-form" data-id="${acc.id}">
+                  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div class="md:col-span-2">
+                      <label class="block text-sm font-medium">口座名</label>
+                      <input type="text" name="category" value="${acc.category}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium">種類</label>
+                      <select name="type" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                        <option value="消費支出" ${acc.type === '消費支出' ? 'selected' : ''}>消費支出</option>
+                        <option value="貯金・積立" ${acc.type === '貯金・積立' ? 'selected' : ''}>貯金・積立</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium">グループ</label>
+                      <input type="text" name="group" value="${acc.group || ''}" placeholder="例: 2人の貯金" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-sm font-medium">目標金額 (任意)</label>
+                      <input type="number" name="goal" value="${acc.goal || ''}" placeholder="0" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                    </div>
+                    <div class="flex items-center">
+                      <input type="checkbox" name="isDefault" id="isDefault-${acc.id}" class="h-5 w-5 rounded border-gray-300 text-indigo-600" ${acc.isDefault ? 'checked' : ''}>
+                      <label for="isDefault-${acc.id}" class="ml-2 text-sm">夫の給料の入金先にする</label>
+                    </div>
+                    <div class="flex gap-2">
+                      <button type="submit" class="flex-grow px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm">保存</button>
+                      <button type="button" class="delete-account-btn flex-grow px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md shadow-sm">削除</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      setupAccountSettingsListeners();
+    }
+    
+    function renderFutureExpenseForm(expenses, accounts) {
+      const container = document.getElementById('content-future');
+      container.innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-6">将来の出費を登録</h2>
+            <form id="future-expense-form" class="space-y-6">
+              <input type="hidden" id="expense-id">
+              <div>
+                <label for="expense-name" class="block text-sm font-medium">出費名</label>
+                <input type="text" id="expense-name" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700" placeholder="例: 車の購入" required>
+              </div>
+              <div>
+                <label for="expense-amount" class="block text-sm font-medium">予定金額</label>
+                <input type="number" id="expense-amount" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700" placeholder="例: 2000000" required>
+              </div>
+              <div>
+                <label for="expense-date" class="block text-sm font-medium">予定日</label>
+                <input type="date" id="expense-date" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700" required>
+              </div>
+              <div>
+                <label for="expense-source" class="block text-sm font-medium">引き落とし口座</label>
+                <select id="expense-source" name="sourceAccount" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm" required>
+                  ${accounts.map(acc => `<option value="${acc.category}">${acc.category}</option>`).join('')}
+                </select>
+              </div>
+              <div class="pt-2">
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">登録・更新</button>
+              </div>
+            </form>
+          </div>
+          <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-6">登録済みの出費</h2>
+            <div id="future-expense-list" class="space-y-4 max-h-96 overflow-y-auto">
+              ${expenses && expenses.length > 0 ? expenses.map(e => `
+                <div class="p-4 border dark:border-gray-700 rounded-md flex justify-between items-center">
+                  <div>
+                    <p class="font-semibold">${e.name}</p>
+                    <p class="text-sm text-gray-500">${e.date} - ${Number(e.amount).toLocaleString()}円</p>
+                    <p class="text-xs text-gray-400">引き落とし元: ${e.sourceAccount || '未設定'}</p>
+                  </div>
+                  <div>
+                    <button class="text-blue-500 dark:text-blue-400 hover:text-blue-700 mr-4" onclick="editFutureExpense('${e.id}')"><i class="fas fa-edit"></i></button>
+                    <button class="text-red-500 dark:text-red-400 hover:text-red-700" onclick="deleteFutureExpense('${e.id}')"><i class="fas fa-trash"></i></button>
+                  </div>
+                </div>
+              `).join('') : '<p class="text-gray-500">登録された出費はありません。</p>'}
+            </div>
+          </div>
+        </div>
+      `;
+      setupFutureExpenseFormListeners();
+    }
+    
+    function renderSimulation(templates, accounts) {
+        const container = document.getElementById('content-simulation');
+        container.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-bold mb-6">3年間の資産シミュレーション</h2>
+                <div class="mb-4">
+                  <label class="block text-sm font-medium">基準にする振分テンプレート</label>
+                  <select id="sim-template-select" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                    ${Object.keys(templates).map(name => `<option value="${name}">${name}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="mb-6">
+                  <label class="block text-sm font-medium">グラフに表示する口座</label>
+                  <div id="sim-accounts-selector" class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    ${accounts.map(acc => `
+                      <div class="flex items-center">
+                        <input id="sim-acc-${acc.category}" name="sim-accounts" value="${acc.category}" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <label for="sim-acc-${acc.category}" class="ml-2 block text-sm">${acc.category}</label>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+                <button id="run-simulation-btn" class="w-full px-4 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700">シミュレーション実行</button>
+                <canvas id="simulationChart" class="mt-6"></canvas>
+            </div>
+        `;
+        setupSimulationListeners();
+    }
+    
+    // =================================================================
+    // グラフ描画関数
+    // =================================================================
+    function drawSimulationChart(data) {
+        const ctx = document.getElementById('simulationChart');
+        if (!ctx) return;
+        const context = ctx.getContext('2d');
+        if (simulationChart) simulationChart.destroy();
+        const textColor = document.documentElement.classList.contains('dark') ? '#fff' : '#333';
+        const colorPalette = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280'];
+
+        const datasets = Object.entries(data.datasets).map(([label, values], index) => ({
+          label: label,
+          data: values,
+          borderColor: colorPalette[index % colorPalette.length],
+          backgroundColor: colorPalette[index % colorPalette.length] + '1A', // Add alpha for fill
+          fill: label === '2人の貯金', // Only fill the main savings account
+          tension: 0.1
+        }));
+
+        simulationChart = new Chart(context, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { ticks: { callback: value => (value / 10000).toLocaleString() + '万円', color: textColor }, grid: { color: document.documentElement.classList.contains('dark') ? '#374151' : '#e5e7eb' } },
+                    x: { ticks: { color: textColor }, grid: { color: document.documentElement.classList.contains('dark') ? '#374151' : '#e5e7eb' } }
+                },
+                plugins: { legend: { labels: { color: textColor } }, tooltip: { callbacks: { label: context => `${context.dataset.label}: ${context.parsed.y.toLocaleString()}円` } } }
+            }
+        });
+    }
+
+    // =================================================================
+    // イベントリスナー設定
+    // =================================================================
+    function setupEventListeners() {
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', e => {
+          e.preventDefault();
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('border-indigo-500', 'text-indigo-600'));
+          e.target.classList.add('border-indigo-500', 'text-indigo-600');
+          document.querySelectorAll('.content-area').forEach(area => area.classList.add('hidden'));
+          const tabName = e.target.id.split('-')[1];
+          document.getElementById(`content-${tabName}`).classList.remove('hidden');
+          if (tabName === 'simulation' && simulationChart) {
+             setTimeout(() => simulationChart.resize(), 0);
+          }
+        });
+      });
+      document.getElementById('theme-toggle').addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark');
+        document.getElementById('theme-icon-light').classList.toggle('hidden');
+        document.getElementById('theme-icon-dark').classList.toggle('hidden');
+        localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+      });
+      if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+          document.getElementById('theme-icon-light').classList.add('hidden');
+          document.getElementById('theme-icon-dark').classList.remove('hidden');
+      }
+      document.getElementById('register-salary-btn').addEventListener('click', showSalaryWizard);
+    }
+
+    function setupAllocationListeners(templates) {
+        const form = document.getElementById('allocation-form');
+        form.addEventListener('input', calculateCouplesSavings);
+
+        form.addEventListener('submit', e => {
+            e.preventDefault();
+            showLoader();
+            const formData = new FormData(e.target);
+            const allocations = [];
+            document.querySelectorAll('input[name^="alloc-"]').forEach(input => {
+                const amount = Number(input.value) || 0;
+                if (amount > 0) {
+                    const category = input.name.replace('alloc-', '');
+                    const isExpense = document.getElementById(`isExpense-${category}`).checked;
+                    allocations.push({ category: category, amount: amount, isExpense: isExpense });
+                }
+            });
+            google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).allocateFunds(allocations);
+        });
+
+        document.getElementById('load-template-btn').addEventListener('click', () => {
+            const templateName = document.getElementById('template-select').value;
+            if (templateName && templates[templateName]) {
+                const template = templates[templateName];
+                if(template.incomes) {
+                  Object.entries(template.incomes).forEach(([category, amount]) => {
+                      const input = document.getElementById(`income-${category === '妻の給料' ? 'wife' : 'husband'}`);
+                      if (input) input.value = amount;
+                  });
+                }
+                if(template.allocations) {
+                  Object.entries(template.allocations).forEach(([category, data]) => {
+                      const input = document.getElementById(`alloc-${category}`);
+                      const checkbox = document.getElementById(`isExpense-${category}`);
+                      if (input) input.value = data.amount;
+                      if (checkbox) checkbox.checked = data.isExpense;
+                  });
+                }
+            }
+            calculateCouplesSavings();
+        });
+
+        document.getElementById('save-template-btn').addEventListener('click', () => {
+            const templateName = prompt('テンプレート名を入力してください:');
+            if (templateName) {
+                showLoader();
+                const formData = new FormData(form);
+                const templateData = { incomes: [], allocations: [] };
+                for (let [key, value] of formData.entries()) {
+                    const amount = Number(value) || 0;
+                    if (key.startsWith('income-')) {
+                        if(amount > 0) templateData.incomes.push({ category: key.replace('income-', ''), amount: amount });
+                    } else if (key.startsWith('alloc-')) {
+                        const category = key.replace('alloc-', '');
+                        const isExpense = formData.has(`isExpense-${category}`);
+                        if(amount > 0) templateData.allocations.push({ category: category, amount: amount, isExpense: isExpense });
+                    }
+                }
+                google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).saveAllocationTemplate(templateName, templateData);
+            }
+        });
+    }
+    
+    function calculateCouplesSavings() {
+        const form = document.getElementById('allocation-form');
+        const formData = new FormData(form);
+        let totalIncome = 0;
+        let totalAllocation = 0;
+        for (let [key, value] of formData.entries()) {
+            if (key.startsWith('income-')) {
+                totalIncome += Number(value) || 0;
+            } else if (key.startsWith('alloc-')) {
+                totalAllocation += Number(value) || 0;
+            }
+        }
+        const savings = totalIncome - totalAllocation;
+        document.getElementById('couples-savings').textContent = `${savings.toLocaleString()}円`;
+    }
+    
+    function setupTransactionFormListeners(accounts) {
+        const form = document.getElementById('transaction-form');
+        form.addEventListener('submit', e => {
+            e.preventDefault();
+            showLoader();
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            if (data.id) {
+                google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).updateTransaction(data);
+            } else {
+                google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).recordTransaction(data);
+            }
+        });
+        
+        document.getElementById('transaction-cancel-btn').addEventListener('click', resetTransactionForm);
+
+        const typeExpenseBtn = document.getElementById('type-expense');
+        const typeIncomeBtn = document.getElementById('type-income');
+        const typeAllocationBtn = document.getElementById('type-allocation');
+        const typeInput = document.getElementById('transaction-type');
+        const categoryWrapper = document.getElementById('category-wrapper');
+        const categorySelect = document.getElementById('category');
+        
+        const incomeCategories = `<option value="妻の給料">妻の給料</option><option value="夫の給料">夫の給料</option><option value="その他収入">その他収入</option>`;
+        const accountCategories = accounts.map(c => `<option value="${c.category}">${c.category}</option>`).join('');
+
+        function setType(type) {
+            typeInput.value = type;
+            [typeExpenseBtn, typeIncomeBtn, typeAllocationBtn].forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white');
+                btn.classList.add('bg-gray-200', 'dark:bg-gray-600');
+            });
+            
+            if(type === '支出') {
+                typeExpenseBtn.classList.add('bg-indigo-600', 'text-white');
+                categorySelect.innerHTML = accountCategories;
+                categoryWrapper.querySelector('label').textContent = 'カテゴリ (どの口座から？)';
+            } else if (type === '収入') {
+                typeIncomeBtn.classList.add('bg-indigo-600', 'text-white');
+                categorySelect.innerHTML = incomeCategories;
+                categoryWrapper.querySelector('label').textContent = '収入源';
+            } else if (type === '振分') {
+                typeAllocationBtn.classList.add('bg-indigo-600', 'text-white');
+                categorySelect.innerHTML = accountCategories;
+                categoryWrapper.querySelector('label').textContent = 'カテゴリ (どの口座へ？)';
+            }
+        }
+        
+        typeExpenseBtn.addEventListener('click', () => setType('支出'));
+        typeIncomeBtn.addEventListener('click', () => setType('収入'));
+        typeAllocationBtn.addEventListener('click', () => setType('振分'));
+    }
+    
+    function setupAccountSettingsListeners() {
+      document.querySelectorAll('.account-form').forEach(form => {
+        form.addEventListener('submit', e => {
+          e.preventDefault();
+          showLoader();
+          const formData = new FormData(e.target);
+          const accountData = Object.fromEntries(formData.entries());
+          accountData.id = e.target.dataset.id;
+          accountData.isDefault = formData.has('isDefault');
+          google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).saveAccount(accountData);
+        });
+      });
+      document.querySelectorAll('.delete-account-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const form = e.target.closest('form');
+          const id = form.dataset.id;
+          if (confirm(`口座「${form.querySelector('input[name="category"]').value}」を削除しますか？\nこの口座に関連する取引履歴は削除されません。`)) {
+            showLoader();
+            google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).deleteAccount(id);
+          }
+        });
+      });
+      document.getElementById('add-account-btn').addEventListener('click', () => {
+        const newAccountData = { category: '新しい口座', type: '消費支出', group: '', goal: 0, isDefault: false, id: '' };
+        showLoader();
+        google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).saveAccount(newAccountData);
+      });
+    }
+
+    function setupFutureExpenseFormListeners() {
+        document.getElementById('future-expense-form').addEventListener('submit', e => {
+            e.preventDefault();
+            showLoader();
+            const data = {
+                id: document.getElementById('expense-id').value,
+                name: document.getElementById('expense-name').value,
+                amount: document.getElementById('expense-amount').value,
+                date: document.getElementById('expense-date').value,
+                sourceAccount: document.getElementById('expense-source').value
+            };
+            google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).saveFutureExpense(data);
+        });
+    }
+
+    function setupSimulationListeners() {
+        document.getElementById('run-simulation-btn').addEventListener('click', () => {
+            const templateName = document.getElementById('sim-template-select').value;
+            if (!templateName) {
+                showModal('エラー', 'シミュレーションの基準にする振分テンプレートを選択してください。');
+                return;
+            }
+            const selectedAccounts = Array.from(document.querySelectorAll('input[name="sim-accounts"]:checked')).map(cb => cb.value);
+            if (selectedAccounts.length === 0) {
+              showModal('エラー', 'グラフに表示する口座を1つ以上選択してください。');
+              return;
+            }
+            showLoader();
+            google.script.run.withSuccessHandler(onSimulationSuccess).withFailureHandler(onFailure).getSimulationData(templateName, selectedAccounts);
+        });
+    }
+    
+    // =================================================================
+    // GASコールバック関数
+    // =================================================================
+    function onSuccess(newData) {
+        showModal('成功', '処理が完了しました。');
+        resetTransactionForm();
+        initializeApp(newData);
+    }
+    
+    function onSimulationSuccess(data) {
+        hideLoader();
+        drawSimulationChart(data);
+    }
+    
+    function onFailure(error) {
+      hideLoader();
+      showModal('エラー', error.message);
+      console.error(error);
+    }
+    
+    // =================================================================
+    // ヘルパー関数
+    // =================================================================
+    function showLoader() { loader.classList.remove('hidden'); }
+    function hideLoader() { loader.classList.add('hidden'); }
+    function showModal(title, content, element = null) {
+      const container = document.getElementById('modal-container');
+      container.innerHTML = `
+        <div id="modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white dark:bg-gray-800">
+            <div class="mt-3 text-center">
+              <h3 class="text-lg leading-6 font-medium" id="modal-title">${title}</h3>
+              <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500" id="modal-content">${content}</p>
+              </div>
+              <div id="modal-custom-content"></div>
+              <div class="items-center px-4 py-3" id="modal-buttons">
+                <button id="modal-close" class="px-4 py-2 bg-gray-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-600">閉じる</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      if (element) {
+        document.getElementById('modal-custom-content').appendChild(element);
+      }
+      document.getElementById('modal-close').addEventListener('click', () => container.innerHTML = '');
+    }
+
+    function editTransaction(id) {
+        const t = allData.transactions.find(tr => tr.id === id);
+        if (!t) return;
+
+        document.getElementById('tab-transaction').click();
+        
+        document.getElementById('transaction-form-title').textContent = '取引を編集する';
+        document.getElementById('transaction-id').value = t.id;
+        document.getElementById('date').value = new Date(t.date).toISOString().split('T')[0];
+        document.getElementById('amount').value = t.amount;
+        document.getElementById('memo').value = t.memo;
+
+        document.querySelector(`#type-${t.type === '支出' ? 'expense' : (t.type === '収入' ? 'income' : 'allocation')}`).click();
+        
+        const categorySelect = document.getElementById('category');
+        categorySelect.value = t.category;
+
+        document.getElementById('transaction-submit-btn').textContent = '更新する';
+        document.getElementById('transaction-cancel-btn').classList.remove('hidden');
+    }
+
+    function resetTransactionForm() {
+        document.getElementById('transaction-form-title').textContent = '取引を記録する';
+        document.getElementById('transaction-form').reset();
+        document.getElementById('date').valueAsDate = new Date();
+        document.getElementById('transaction-submit-btn').textContent = '記録する';
+        document.getElementById('transaction-cancel-btn').classList.add('hidden');
+        document.getElementById('type-expense').click();
+    }
+
+    function deleteTransaction(id) {
+        if (confirm('この取引を削除しますか？\nこの操作は取り消せません。')) {
+            showLoader();
+            google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).deleteTransaction(id);
+        }
+    }
+
+    function editFutureExpense(id) {
+        const expense = allData.futureExpenses.find(e => e.id === id);
+        if (expense) {
+            document.getElementById('expense-id').value = expense.id;
+            document.getElementById('expense-name').value = expense.name;
+            document.getElementById('expense-amount').value = expense.amount;
+            document.getElementById('expense-date').value = expense.date;
+            document.getElementById('expense-source').value = expense.sourceAccount;
+        }
+    }
+    function deleteFutureExpense(id) {
+        if (confirm('この出費を削除しますか？')) {
+            showLoader();
+            google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).deleteFutureExpense(id);
+        }
+    }
+
+    function checkReminders() {
+      const today = new Date();
+      const day = today.getDate();
+      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const banner = document.getElementById('reminder-banner');
+      let message = '';
+      
+      if (day >= 25 && day <= 27) {
+        message = '💡 妻の給料日の時期です。給料の登録を忘れないようにしましょう。';
+      } else if (day === endOfMonth || day === endOfMonth -1) {
+        message = '💡 夫の給料日の時期です。給料の登録を忘れないようにしましょう。';
+      }
+      
+      if (message) {
+        banner.textContent = message;
+        banner.classList.remove('hidden');
+      }
+    }
+
+    function showSalaryWizard() {
+      const wizardContent = document.createElement('div');
+      wizardContent.className = 'space-y-4';
+      wizardContent.innerHTML = `
+        <div id="salary-step-1">
+          <p class="text-lg mb-4">どちらの給料ですか？</p>
+          <div class="flex gap-4">
+            <button id="wife-salary-btn" class="flex-1 px-4 py-2 bg-pink-500 text-white rounded-md">妻の給料</button>
+            <button id="husband-salary-btn" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md">夫の給料</button>
+          </div>
+        </div>
+        <div id="salary-step-2" class="hidden">
+          <label for="salary-amount" class="block text-lg mb-2">給与はいくらですか？</label>
+          <input type="number" id="salary-amount" class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm" placeholder="金額を入力">
+          <input type="hidden" id="salary-type">
+        </div>
+      `;
+      
+      const modalButtons = document.createElement('div');
+      modalButtons.className = 'flex gap-4 mt-4';
+      modalButtons.innerHTML = `
+        <button id="salary-back-btn" class="hidden flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-600 rounded-md">戻る</button>
+        <button id="salary-next-btn" class="hidden flex-1 px-4 py-2 bg-indigo-600 text-white rounded-md">登録</button>
+      `;
+      
+      showModal('給料の登録', '', wizardContent);
+      document.getElementById('modal-buttons').innerHTML = '';
+      document.getElementById('modal-buttons').appendChild(modalButtons);
+
+      const step1 = wizardContent.querySelector('#salary-step-1');
+      const step2 = wizardContent.querySelector('#salary-step-2');
+      const backBtn = modalButtons.querySelector('#salary-back-btn');
+      const nextBtn = modalButtons.querySelector('#salary-next-btn');
+      const salaryTypeInput = wizardContent.querySelector('#salary-type');
+      const salaryAmountInput = wizardContent.querySelector('#salary-amount');
+
+      function goToStep2(type) {
+        step1.classList.add('hidden');
+        step2.classList.remove('hidden');
+        backBtn.classList.remove('hidden');
+        nextBtn.classList.remove('hidden');
+        salaryTypeInput.value = type;
+      }
+
+      wizardContent.querySelector('#wife-salary-btn').addEventListener('click', () => goToStep2('妻の給料'));
+      wizardContent.querySelector('#husband-salary-btn').addEventListener('click', () => goToStep2('夫の給料'));
+
+      backBtn.addEventListener('click', () => {
+        step1.classList.remove('hidden');
+        step2.classList.add('hidden');
+        backBtn.classList.add('hidden');
+        nextBtn.classList.add('hidden');
+      });
+
+      nextBtn.addEventListener('click', () => {
+        const salaryData = {
+          date: new Date().toISOString().split('T')[0],
+          type: '収入',
+          amount: salaryAmountInput.value,
+          category: salaryTypeInput.value,
+          memo: `${salaryTypeInput.value} (かんたん登録)`
+        };
+        if (!salaryData.amount || salaryData.amount <= 0) {
+          alert('金額を正しく入力してください。');
+          return;
+        }
+        showLoader();
+        google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFailure).recordSalary(salaryData);
+        document.getElementById('modal-container').innerHTML = '';
+      });
+    }
+
+  </script>
+</body>
+</html>
